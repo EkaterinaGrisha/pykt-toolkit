@@ -44,6 +44,31 @@ def save_cur_predict_result(dres, q, r, d, t, m, sm, p):
     return "\n".join(results)
 
 def evaluate(model, test_loader, model_name, save_path=""):
+    """Original pyKT entry point. Returns (auc, acc).
+
+    kt-research patch P2: this is now a thin wrapper over ``_evaluate_core`` so
+    existing pyKT callers keep their (auc, acc) contract while research code can
+    obtain the raw per-prediction labels/scores needed for calibration metrics
+    (ECE, Brier, reliability) via ``evaluate_with_preds``.
+    """
+    auc, acc, _ts, _ps = _evaluate_core(model, test_loader, model_name, save_path)
+    return auc, acc
+
+
+def evaluate_with_preds(model, test_loader, model_name, save_path=""):
+    """kt-research patch P2: like ``evaluate`` but also returns the flattened,
+    mask-selected ground-truth labels and predicted probabilities.
+
+    Returns
+    -------
+    (auc, acc, ts, ps) : float, float, np.ndarray, np.ndarray
+        ``ts`` ground-truth 0/1 labels, ``ps`` predicted probabilities in [0, 1],
+        both 1-D and aligned, with padding already removed via the sequence mask.
+    """
+    return _evaluate_core(model, test_loader, model_name, save_path)
+
+
+def _evaluate_core(model, test_loader, model_name, save_path=""):
     if save_path != "":
         fout = open(save_path, "w", encoding="utf8")
     with torch.no_grad():
@@ -145,7 +170,7 @@ def evaluate(model, test_loader, model_name, save_path=""):
         acc = metrics.accuracy_score(ts, prelabels)
     # if save_path != "":
     #     pd.to_pickle(dres, save_path+".pkl")
-    return auc, acc
+    return auc, acc, ts, ps
 
 def early_fusion(curhs, model, model_name):
     if model_name in ["dkvmn","skvmn"]:
