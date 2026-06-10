@@ -8,7 +8,10 @@ KEYS = ["user_id", "skill_id", "problem_id"]
 def read_data_from_csv(read_file, write_file):
     stares = []
 
-    df = pd.read_csv(read_file, encoding = 'utf-8', dtype=str)
+    # kt-research patch P3: the canonical skill_builder_data_corrected_collapsed.csv
+    # is ISO-8859-1 (latin-1) encoded (non-ASCII bytes in skill_name); reading it as
+    # utf-8 raises UnicodeDecodeError. latin-1 is the documented encoding for this file.
+    df = pd.read_csv(read_file, encoding='ISO-8859-1', dtype=str)
 
     ins, us, qs, cs, avgins, avgcq, na = sta_infos(df, KEYS, stares)
     print(f"original interaction num: {ins}, user num: {us}, question num: {qs}, concept num: {cs}, avg(ins) per s: {avgins}, avg(c) per q: {avgcq}, na: {na}")
@@ -19,7 +22,11 @@ def read_data_from_csv(read_file, write_file):
     ins, us, qs, cs, avgins, avgcq, na = sta_infos(_df, KEYS, stares)
     print(f"after drop interaction num: {ins}, user num: {us}, question num: {qs}, concept num: {cs}, avg(ins) per s: {avgins}, avg(c) per q: {avgcq}, na: {na}")
 
-    ui_df = _df.groupby(['user_id'], sort=False)
+    # kt-research patch P4: pandas >=2 returns tuple group keys for groupby([col]),
+    # so str(user) became "('64525',)" and corrupted the written sequence file
+    # (downstream int(seq_len) then failed). Grouping by the scalar column name
+    # restores scalar keys, matching pyKT's original (old-pandas) assumption.
+    ui_df = _df.groupby("user_id", sort=False)
 
     user_inters = []
     for ui in ui_df:
