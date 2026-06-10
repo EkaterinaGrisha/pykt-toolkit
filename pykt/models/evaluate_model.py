@@ -352,7 +352,12 @@ def group_fusion(dmerge, model, model_name, fusion_type, fout):
     early = False
     if model_name in hasearly and "early_fusion" in fusion_type:
         early = True
-    save_question_res(dfinal, fout, early)
+    # kt-research patch P5: only persist per-question rows when a save file is open.
+    # evaluate_question previously always passed fout, crashing (UnboundLocal) when
+    # called with the default empty save_path. Question-level eval is our primary metric
+    # (DECISIONS.md D005), so it must work without a save file.
+    if fout is not None:
+        save_question_res(dfinal, fout, early)
     return dfinal , drest
 
 def save_question_res(dres, fout, early=False):
@@ -369,12 +374,15 @@ def save_question_res(dres, fout, early=False):
         curstr = "\t".join([str(round(s, 4)) if type(s) == type(0.1) or type(s) == np.float32 else str(s) for s in curres])
         fout.write(curstr + "\n")
 
-def evaluate_question(model, test_loader, model_name, fusion_type=["early_fusion", "late_fusion"], save_path=""):
+def evaluate_question(model, test_loader, model_name, fusion_type=["early_fusion", "late_fusion"], save_path="", return_preds=False):
     # dkt / dkt+ / dkt_forget / atkt: give past -> predict all. has no early fusion!!!
     # dkvmn / akt / saint: give cur -> predict cur
     # sakt: give past+cur -> predict cur
     # kqn: give past+cur -> predict cur
     hasearly = ["dkvmn","deep_irt", "skvmn", "kqn", "akt", "simplekt", "bakt_time", "saint", "sakt", "hawkes", "akt_vector", "akt_norasch", "akt_mono", "akt_attn", "aktattn_pos", "aktmono_pos", "akt_raschx", "akt_raschy", "aktvec_raschx", "lpkt"]
+    # kt-research patch P5: fout must exist even when no save file is requested, because
+    # group_fusion() always receives it. Default to None and guard writes downstream.
+    fout = None
     if save_path != "":
         fout = open(save_path, "w", encoding="utf8")
         if model_name in hasearly:
@@ -531,6 +539,11 @@ def evaluate_question(model, test_loader, model_name, fusion_type=["early_fusion
         aucs["concepts"] = auc
         accs["concepts"] = acc
 
+        # kt-research patch P5: optionally collect raw question-level labels/probabilities
+        # for downstream calibration (RQ2). "concepts" keeps the per-concept arrays; each
+        # fusion key keeps the per-question fused arrays (late_trues are shared).
+        raw = {"concepts": {"y_true": ts.copy(), "y_prob": ps.copy()}}
+
         # print(f"dinfos: {dinfos.keys()}")
         for key in dinfos:
             if key not in ["late_mean", "late_vote", "late_all", "early_preds"]:
@@ -543,6 +556,9 @@ def evaluate_question(model, test_loader, model_name, fusion_type=["early_fusion
             acc = metrics.accuracy_score(ts, prelabels)
             aucs[key] = auc
             accs[key] = acc
+            raw[key] = {"y_true": ts.copy(), "y_prob": ps.copy()}
+    if return_preds:
+        return aucs, accs, raw
     return aucs, accs
 
 
