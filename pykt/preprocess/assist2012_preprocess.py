@@ -30,7 +30,9 @@ def read_data_from_csv(read_file, write_file):
 
 
     user_inters = []
-    for user, group in df.groupby(['user_id'], sort=False):
+    # kt-research patch P4 (recurring): pandas>=2 returns tuple group keys for
+    # groupby([col]); group by the scalar column name to keep scalar uid keys.
+    for user, group in df.groupby('user_id', sort=False):
         group = group.sort_values(['start_timestamp','tmp_index'])
         seq_skills = group['skill_id'].tolist()
         seq_ans = group['correct'].tolist()

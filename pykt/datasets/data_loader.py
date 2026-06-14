@@ -137,9 +137,11 @@ class KTDataset(Dataset):
             if "questions" in self.input_type:
                 dori["qseqs"].append([int(_) for _ in row["questions"].split(",")])
             if "timestamps" in row:
-                dori["tseqs"].append([int(_) for _ in row["timestamps"].split(",")])
+                # kt-research patch: tolerate float-formatted values (e.g. assist2017
+                # writes times as '778000.0'); int('778000.0') would raise.
+                dori["tseqs"].append([int(float(_)) for _ in row["timestamps"].split(",")])
             if "usetimes" in row:
-                dori["utseqs"].append([int(_) for _ in row["usetimes"].split(",")])
+                dori["utseqs"].append([int(float(_)) for _ in row["usetimes"].split(",")])
                 
             dori["rseqs"].append([int(_) for _ in row["responses"].split(",")])
             dori["smasks"].append([int(_) for _ in row["selectmasks"].split(",")])

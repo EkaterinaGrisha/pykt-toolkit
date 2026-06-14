@@ -52,7 +52,9 @@ def read_data_from_csv(read_file, write_file):
     
     co.to_csv(os.path.join(read_file, 'ednet_sample_process.csv'), index=False)
     
-    ui_df = co.groupby(['user_id'], sort=False)
+    # kt-research patch P4 (recurring): scalar groupby key for pandas>=2 (else str(user)
+    # writes a tuple "(uid,)" and corrupts the uid field).
+    ui_df = co.groupby('user_id', sort=False)
 
     user_inters = []
     for ui in ui_df:
