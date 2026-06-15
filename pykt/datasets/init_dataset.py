@@ -46,14 +46,17 @@ def init_test_datasets(data_config, model_name, batch_size):
             test_question_dataset = ATDKTDataset(os.path.join(data_config["dpath"], data_config["test_question_file"]), data_config["input_type"], {-1}, True)
             test_question_window_dataset = ATDKTDataset(os.path.join(data_config["dpath"], data_config["test_question_window_file"]), data_config["input_type"], {-1}, True)
     else:
+        # kt-research: KT_SKIP_WINDOW avoids loading the (huge) window-eval files, which
+        # OOM low-RAM boxes; we never report window metrics. Window loaders become None.
+        _skip_w = bool(os.environ.get("KT_SKIP_WINDOW"))
         test_dataset = KTDataset(os.path.join(data_config["dpath"], data_config["test_file"]), data_config["input_type"], {-1})
-        test_window_dataset = KTDataset(os.path.join(data_config["dpath"], data_config["test_window_file"]), data_config["input_type"], {-1})
+        test_window_dataset = None if _skip_w else KTDataset(os.path.join(data_config["dpath"], data_config["test_window_file"]), data_config["input_type"], {-1})
         if "test_question_file" in data_config:
             test_question_dataset = KTDataset(os.path.join(data_config["dpath"], data_config["test_question_file"]), data_config["input_type"], {-1}, True)
-            test_question_window_dataset = KTDataset(os.path.join(data_config["dpath"], data_config["test_question_window_file"]), data_config["input_type"], {-1}, True)
+            test_question_window_dataset = None if _skip_w else KTDataset(os.path.join(data_config["dpath"], data_config["test_question_window_file"]), data_config["input_type"], {-1}, True)
 
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-    test_window_loader = DataLoader(test_window_dataset, batch_size=batch_size, shuffle=False)
+    test_window_loader = DataLoader(test_window_dataset, batch_size=batch_size, shuffle=False) if test_window_dataset is not None else None
     if "test_question_file" in data_config:
         print(f"has test_question_file!")
         test_question_loader,test_question_window_loader = None,None
