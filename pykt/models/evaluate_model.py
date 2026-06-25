@@ -110,7 +110,13 @@ def _evaluate_core(model, test_loader, model_name, save_path=""):
                 y = model(dcur, dgaps)
                 y = y[:,1:]
             elif model_name in ["simplekt"]:
-                y = model(dcur)
+                # kt-research patch P6: dcur stays on CPU in _evaluate_core; for
+                # models receiving the whole dict (simpleKT), move each tensor
+                # to the model's device before calling forward, else CUDA<>CPU
+                # index_select mismatch crashes evaluation.
+                dcur_dev = {k: (v.to(device) if hasattr(v, "to") else v)
+                            for k, v in dcur.items()}
+                y = model(dcur_dev)
                 y = y[:,1:]
             elif model_name in ["dkt", "dkt+"]:
                 y = model(c.long(), r.long())
@@ -432,7 +438,11 @@ def evaluate_question(model, test_loader, model_name, fusion_type=["early_fusion
                 # print(start_hemb.shape, h.shape)
                 # h = torch.cat((start_hemb, h), dim=1) # add the first hidden emb
             elif model_name in ["simplekt"]:
-                y, h = model(dcurori, qtest=True, train=False)
+                # kt-research patch P6 (cont.): also move dcurori tensors to device
+                # inside evaluate_question; same root cause as the _evaluate_core fix.
+                dcurori_dev = {k: (v.to(device) if hasattr(v, "to") else v)
+                               for k, v in dcurori.items()}
+                y, h = model(dcurori_dev, qtest=True, train=False)
                 y = y[:,1:]
             elif model_name in ["akt", "akt_vector", "akt_norasch", "akt_mono", "akt_attn", "aktattn_pos", "aktmono_pos", "akt_raschx", "akt_raschy", "aktvec_raschx"]:
                 y, reg_loss, h = model(cc.long(), cr.long(), cq.long(), True)
