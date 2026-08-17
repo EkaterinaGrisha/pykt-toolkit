@@ -129,7 +129,14 @@ class KTDataset(Dataset):
         df = df[df["fold"].isin(folds)]
         interaction_num = 0
         # seq_qidxs, seq_rests = [], []
-        dqtest = {"qidxs": [], "rests":[], "orirow":[]}
+        # kt-research patch (RQ3 cross-family alignment): also load ``cidxs``
+        # if present in the question-level sequences CSV. Preprocess-side patch
+        # in split_datasets.py ensures the column is written; we surface it to
+        # evaluate_model.py via the dqtest dict so it can be persisted into
+        # per-fold NPZs alongside qids / row. Backward-compatible: if the CSV
+        # has no cidxs column (old preprocess), the entry stays empty and the
+        # tensor conversion below is a no-op.
+        dqtest = {"qidxs": [], "rests":[], "orirow":[], "cidxs":[]}
         for i, row in df.iterrows():
             #use kc_id or question_id as input
             if "concepts" in self.input_type:
@@ -152,6 +159,8 @@ class KTDataset(Dataset):
                 dqtest["qidxs"].append([int(_) for _ in row["qidxs"].split(",")])
                 dqtest["rests"].append([int(_) for _ in row["rest"].split(",")])
                 dqtest["orirow"].append([int(_) for _ in row["orirow"].split(",")])
+                if "cidxs" in row and isinstance(row["cidxs"], str):
+                    dqtest["cidxs"].append([int(_) for _ in row["cidxs"].split(",")])
         for key in dori:
             if key not in ["rseqs"]:#in ["smasks", "tseqs"]:
                 dori[key] = LongTensor(dori[key])
@@ -166,8 +175,13 @@ class KTDataset(Dataset):
         # print("load data tseqs: ", dori["tseqs"])
 
         if self.qtest:
-            for key in dqtest:
+            for key in list(dqtest.keys()):
+                if not dqtest[key]:
+                    # backward-compat: empty when the CSV lacks the column
+                    # (e.g. old cidxs-less preprocess); drop the key.
+                    del dqtest[key]
+                    continue
                 dqtest[key] = LongTensor(dqtest[key])[:, 1:]
-            
+
             return dori, dqtest
         return dori

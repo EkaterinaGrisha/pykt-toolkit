@@ -231,10 +231,17 @@ def late_fusion(dcur, curdf, fusion_type=["mean", "vote", "all"]):
 
 def effective_fusion(df, model, model_name, fusion_type):
     dres = dict()
+    has_cidxs = "cidxs" in df.columns
     df = df.groupby("qidx", as_index=True, sort=True)#.mean()
 
     curhs, curr = [[], []], []
     dcur = {"late_trues": [], "qidxs": [], "questions": [], "concepts": [], "row": [], "concept_preds": []}
+    if has_cidxs:
+        # kt-research patch (RQ3): leading cidxs of each question-event = the
+        # first concept-row's cidxs value. Globally unique per event; the
+        # match key that ktx/alignment.py uses to align classical vs deep
+        # predictions row-by-row.
+        dcur["cidxs"] = []
     hasearly = ["dkvmn","deep_irt", "skvmn", "kqn", "akt", "simplekt", "bakt_time", "saint", "sakt", "hawkes", "akt_vector", "akt_norasch", "akt_mono", "akt_attn", "aktattn_pos", "aktmono_pos", "akt_raschx", "akt_raschy", "aktvec_raschx", "lpkt"]
     for ui in df:
         # 一题一题处理
@@ -260,6 +267,8 @@ def effective_fusion(df, model, model_name, fusion_type):
         dcur["row"].append(curdf["row"].mean().astype(int))
         dcur["questions"].append(",".join([str(int(s)) for s in curdf["questions"].tolist()]))
         dcur["concepts"].append(",".join([str(int(s)) for s in curdf["concepts"].tolist()]))
+        if has_cidxs:
+            dcur["cidxs"].append(int(curdf["cidxs"].iloc[0]))
         late_fusion(dcur, curdf)
         # save original predres in concepts
         dcur["concept_preds"].append(",".join([str(round(s, 4)) for s in (curdf["preds"].tolist())]))
@@ -280,6 +289,10 @@ def effective_fusion(df, model, model_name, fusion_type):
 
 def group_fusion(dmerge, model, model_name, fusion_type, fout):
     hs, sms, cq, cc, rs, ps, qidxs, rests, orirows = dmerge["hs"], dmerge["sm"], dmerge["cq"], dmerge["cc"], dmerge["cr"], dmerge["y"], dmerge["qidxs"], dmerge["rests"], dmerge["orirow"]
+    # kt-research patch (RQ3 cross-family alignment): pull cidxs alongside if
+    # the new preprocess wrote it into test_question_sequences.csv. Threaded
+    # through the per-batch DataFrame below and picked up by effective_fusion.
+    cidxs = dmerge.get("cidxs")
     if cq.shape[1] == 0:
         cq = cc
 
@@ -295,8 +308,10 @@ def group_fusion(dmerge, model, model_name, fusion_type, fout):
         currows = ([-1] + orirows[bz].cpu().tolist())
         curps = ([-1] + ps[bz].cpu().tolist())
         # print(f"qid: {len(curqidxs)}, select: {len(cursm)}, response: {len(rs[bz].cpu().tolist())}, preds: {len(curps)}")
-        df = pd.DataFrame({"qidx": curqidxs, "rest": currests, "row": currows, "select": cursm, 
+        df = pd.DataFrame({"qidx": curqidxs, "rest": currests, "row": currows, "select": cursm,
                 "questions": cq[bz].cpu().tolist(), "concepts": cc[bz].cpu().tolist(), "response": rs[bz].cpu().tolist(), "preds": curps})
+        if cidxs is not None:
+            df["cidxs"] = [-1] + cidxs[bz].cpu().tolist()
         if model_name in hasearly and model_name not in ["kqn","lpkt","deep_irt"]:
             df["hidden"] = [np.array(a) for a in hs[0][bz].cpu().tolist()]
         elif model_name == "kqn":
@@ -399,6 +414,8 @@ def evaluate_question(model, test_loader, model_name, fusion_type=["early_fusion
         dinfos = dict()
         dhistory = dict()
         history_keys = ["hs", "sm", "cq", "cc", "cr", "y", "qidxs", "rests", "orirow"]
+        # ``cidxs`` is optional (new preprocess adds it; old preprocess doesn't).
+        # It is appended to history_keys after the first batch below if present.
         # for key in history_keys:
         #     dhistory[key] = []
         y_trues, y_scores = [], []
@@ -414,6 +431,12 @@ def evaluate_question(model, test_loader, model_name, fusion_type=["early_fusion
             m, sm = dcurori["masks"], dcurori["smasks"]
             q, c, r, qshft, cshft, rshft, m, sm = q.to(device), c.to(device), r.to(device), qshft.to(device), cshft.to(device), rshft.to(device), m.to(device), sm.to(device)
             qidxs, rests, orirow = dqtest["qidxs"], dqtest["rests"], dqtest["orirow"]
+            # kt-research patch (RQ3): optional per-position concept-row unique id
+            # for cross-family alignment. See ktx/alignment.py — the leading
+            # cidxs of each is_repeat=0 question-event uniquely identifies the
+            # event across the classical test.csv walk and the deep
+            # test_sequences.csv walk.
+            cidxs = dqtest.get("cidxs")
             lenc += q.shape[0]
             # print("="*20)
             # print(f"start predict seqlen: {lenc}")
@@ -504,6 +527,14 @@ def evaluate_question(model, test_loader, model_name, fusion_type=["early_fusion
             elif model_name in hasearly:
                 hs = [h]
             dcur["hs"], dcur["sm"], dcur["cq"], dcur["cc"], dcur["cr"], dcur["y"], dcur["qidxs"], dcur["rests"], dcur["orirow"] = hs, sm, cq, cc, cr, y, qidxs, rests, orirow
+            # kt-research patch (RQ3): thread cidxs through the batch merge
+            # alongside qidxs / rests / orirow so it survives group_fusion +
+            # effective_fusion into the per-question output. Guarded so old
+            # preprocess (no cidxs column) still works.
+            if cidxs is not None:
+                dcur["cidxs"] = cidxs
+                if "cidxs" not in history_keys:
+                    history_keys = history_keys + ["cidxs"]
             # merge history
             dmerge = dict()
             for key in history_keys:
@@ -554,6 +585,33 @@ def evaluate_question(model, test_loader, model_name, fusion_type=["early_fusion
         # fusion key keeps the per-question fused arrays (late_trues are shared).
         raw = {"concepts": {"y_true": ts.copy(), "y_prob": ps.copy()}}
 
+        # kt-research patch P7 (audit #26): expose per-prediction question ids so
+        # downstream RQ2 evaluators can align q-level y_prob to (uid, qid) pairs
+        # without model-side inference-path reverse-engineering. `qidxs` = question
+        # id per stored prediction; `row` = the test_sequences.csv row from which
+        # each prediction came (useful to reconstruct uid via test_sequences.csv).
+        qids_all = None
+        rows_all = None
+        cidxs_all = None
+        if "qidxs" in dinfos:
+            try:
+                qids_all = np.concatenate(dinfos["qidxs"], axis=0)
+            except Exception:
+                qids_all = None
+        if "row" in dinfos:
+            try:
+                rows_all = np.concatenate(dinfos["row"], axis=0)
+            except Exception:
+                rows_all = None
+        # kt-research patch (RQ3): expose the leading cidxs per question event
+        # so downstream cross-family alignment (ktx/alignment.py) has a
+        # globally-unique per-event key without needing to walk any CSV.
+        if "cidxs" in dinfos:
+            try:
+                cidxs_all = np.concatenate(dinfos["cidxs"], axis=0)
+            except Exception:
+                cidxs_all = None
+
         # print(f"dinfos: {dinfos.keys()}")
         for key in dinfos:
             if key not in ["late_mean", "late_vote", "late_all", "early_preds"]:
@@ -566,7 +624,14 @@ def evaluate_question(model, test_loader, model_name, fusion_type=["early_fusion
             acc = metrics.accuracy_score(ts, prelabels)
             aucs[key] = auc
             accs[key] = acc
-            raw[key] = {"y_true": ts.copy(), "y_prob": ps.copy()}
+            entry = {"y_true": ts.copy(), "y_prob": ps.copy()}
+            if qids_all is not None and qids_all.size == ts.size:
+                entry["qids"] = qids_all.copy()
+            if rows_all is not None and rows_all.size == ts.size:
+                entry["row"] = rows_all.copy()
+            if cidxs_all is not None and cidxs_all.size == ts.size:
+                entry["cidxs"] = cidxs_all.copy()
+            raw[key] = entry
     if return_preds:
         return aucs, accs, raw
     return aucs, accs

@@ -582,8 +582,15 @@ def main(dname, fname, dataset_name, configf, min_seq_len = 3, maxlen = 200, kfo
     print("="*20)
 
     test_window_seqs = generate_window_sequences(test_df, list(effective_keys) + ['cidxs'], maxlen)
-    flag, test_question_seqs = generate_question_sequences(test_df, effective_keys, False, min_seq_len, maxlen)
-    flag, test_question_window_seqs = generate_question_sequences(test_df, effective_keys, True, min_seq_len, maxlen)
+    # kt-research patch (RQ3 cross-family alignment): pass ``cidxs`` through to the
+    # question-level sequences too. Without it, test_question_sequences.csv lacks
+    # the globally-unique concept-row identifier that ``ktx/alignment.py`` needs to
+    # match deep predictions row-by-row to classical predictions. cidxs is a
+    # column in test_df (added on line 576 via get_inter_qidx); adding it to the
+    # effective_keys list here makes generate_question_sequences preserve it in
+    # every question-event row of the output CSV.
+    flag, test_question_seqs = generate_question_sequences(test_df, list(effective_keys) + ['cidxs'], False, min_seq_len, maxlen)
+    flag, test_question_window_seqs = generate_question_sequences(test_df, list(effective_keys) + ['cidxs'], True, min_seq_len, maxlen)
     
     test_df = test_df[config+['cidxs']]
 
