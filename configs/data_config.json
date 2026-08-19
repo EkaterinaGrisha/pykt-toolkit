@@ -1,6 +1,6 @@
 {
     "assist2015": {
-        "dpath": ".",
+        "dpath": "../data/assist2015",
         "num_q": 0,
         "num_c": 100,
         "input_type": [
@@ -29,7 +29,7 @@
         "test_original_file_quelevel": "test_quelevel.csv"
     },
     "algebra2005": {
-        "dpath": ".",
+        "dpath": "../data/algebra2005",
         "num_q": 173113,
         "num_c": 112,
         "input_type": [
@@ -61,7 +61,7 @@
         "test_original_file_quelevel": "test_quelevel.csv"
     },
     "assist2009": {
-        "dpath": ".",
+        "dpath": "../data/assist2009",
         "num_q": 17737,
         "num_c": 123,
         "input_type": [
@@ -117,7 +117,7 @@
         "test_question_window_file": "test_question_window_sequences.csv"
     },
     "assist2017": {
-        "dpath": ".",
+        "dpath": "../data/assist2017",
         "num_q": 3162,
         "num_c": 102,
         "input_type": [
@@ -149,7 +149,7 @@
         "test_original_file_quelevel": "test_quelevel.csv"
     },
     "assist2012": {
-        "dpath": ".",
+        "dpath": "../data/assist2012",
         "num_q": 53070,
         "num_c": 265,
         "input_type": [
@@ -237,7 +237,7 @@
         "test_question_window_file": "test_question_window_sequences.csv"
     },
     "bridge2algebra2006": {
-        "dpath": ".",
+        "dpath": "../data/bridge2algebra2006",
         "num_q": 129263,
         "num_c": 493,
         "input_type": [
@@ -269,7 +269,7 @@
         "test_original_file_quelevel": "test_quelevel.csv"
     },
     "ednet": {
-        "dpath": ".",
+        "dpath": "../data/ednet",
         "num_q": 11901,
         "num_c": 188,
         "input_type": [
